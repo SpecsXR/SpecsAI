@@ -1,0 +1,31 @@
+{
+    "Version": 3,
+    "FileReferences": {
+        "Moc": "shizuku/runtime/shizuku.moc3",
+        "Textures": [],
+        "Physics": "shizuku/runtime/shizuku.physics3.json",
+        "Motions": {
+            "01": [
+                {
+                    "File": "shizuku/runtime/motion/01.motion3.json"
+                }
+            ],
+            "02": [
+                {
+                    "File": "shizuku/runtime/motion/02.motion3.json"
+                }
+            ],
+            "03": [
+                {
+                    "File": "shizuku/runtime/motion/03.motion3.json"
+                }
+            ],
+            "04": [
+                {
+                    "File": "shizuku/runtime/motion/04.motion3.json"
+                }
+            ]
+        },
+        "Expressions": []
+    }
+}

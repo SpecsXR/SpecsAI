@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "c:\Users\abdur\Desktop\SpecsAI\ui\input_overlay.py", line 92, in mouseMoveEvent
+    if edge == (int(Qt.LeftEdge) | int(Qt.TopEdge)) or edge == (int(Qt.RightEdge) | int(Qt.BottomEdge)):
+                ^^^^^^^^^^^^^^^^
+TypeError: int() argument must be a string, a bytes-like object or a real number, not 'Edge'

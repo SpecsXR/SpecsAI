@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>VRM Viewer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: transparent; }
+        canvas { display: block; }
+    </style>
+    <!-- Import Map for Three.js and Addons -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@3.0.0/lib/three-vrm.module.js"
+            }
+        }
+    </script>
+</head>
+<body>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        // scene.background = null; // Transparent
+        
+        const camera = new THREE.PerspectiveCamera(30, window.innerWidth / window.innerHeight, 0.01, 20.0); 
+        // Move camera BACK and UP to see the full body clearly
+        camera.position.set(0.0, 1.3, 4.5); 
+        
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(1.0); // Force 1.0 for Performance (High DPI causes lag)
+        document.body.appendChild(renderer.domElement);
+
+        // Controls
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0.0, 0.85, 0.0); // Look at chest/neck area (Standard Anime Center)
+        controls.enableDamping = false; // Disable damping for instant stop (Stability)
+        controls.enablePan = false; // Disable Panning (Model stays centered in widget)
+        controls.enableZoom = true;
+        
+        // Restrict Rotation
+        controls.minPolarAngle = Math.PI / 2; // Lock vertical angle (Horizon)
+        controls.maxPolarAngle = Math.PI / 2; // Lock vertical angle (Horizon)
+        
+        // Mouse Button Mapping
+        controls.mouseButtons = {
+            LEFT: THREE.MOUSE.NONE,    // Disable Left Click (Handled by Python for Window Drag)
+            MIDDLE: THREE.MOUSE.DOLLY, // Scroll click to zoom
+            RIGHT: THREE.MOUSE.ROTATE  // Right Click to Rotate
+        };
+
+        controls.minDistance = 0.1; // Allow closer zoom
+        controls.maxDistance = 6.0;
+        controls.update();
+
+        // Light
+        const light = new THREE.DirectionalLight(0xffffff, 1.0); // Bright light
+        light.position.set(1.0, 1.0, 1.0).normalize();
+        scene.add(light);
+        
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); // Soft fill
+        scene.add(ambientLight);
+
+        // --- VRM STATE ---
+        let currentVrm = undefined;
+        let mixer = undefined;
+        const clock = new THREE.Clock();
+
+        // --- HELPERS ---
+        const loader = new GLTFLoader();
+        loader.register((parser) => {
+            return new VRMLoaderPlugin(parser);
+        });
+
+        // --- EXPOSED FUNCTIONS (Called from Python) ---
+        window.loadVRMFromData = (base64Data) => {
+            console.log("Loading VRM from Base64 Data...");
+            try {
+                const binaryString = window.atob(base64Data);
+                const len = binaryString.length;
+                const bytes = new Uint8Array(len);
+                for (let i = 0; i < len; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                }
+                const blob = new Blob([bytes], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                
+                console.log("Blob URL created:", url);
+                
+                window.loadVRM(url);
+            } catch (e) {
+                console.error("Error converting Base64 to Blob:", e);
+            }
+        };
+
+        window.loadVRM = (url) => {
+            console.log("Loading VRM: " + url);
+            
+            // Clean up old
+            if (currentVrm) {
+                scene.remove(currentVrm.scene);
+                VRMUtils.deepDispose(currentVrm.scene);
+            }
+            
+            loader.load(
+                url,
+                (gltf) => {
+                    const vrm = gltf.userData.vrm;
+                    
+                    // Optimization: Remove unneeded nodes
+                    VRMUtils.removeUnnecessaryVertices(gltf.scene);
+                    VRMUtils.removeUnnecessaryJoints(gltf.scene);
+
+                    currentVrm = vrm;
+                    scene.add(vrm.scene);
+                    
+                    // Rotate to face camera (180 deg)
+                    vrm.scene.rotation.y = Math.PI; 
+                    
+                    // Apply Standing Pose (Fix T-Pose)
+                    const leftArm = vrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+                    const rightArm = vrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+                    if (leftArm) leftArm.rotation.z = 1.3; // Down
+                    if (rightArm) rightArm.rotation.z = -1.3; // Down
+
+                    console.log("VRM Loaded Successfully");
+                },
+                (progress) => console.log("Loading... " + (100.0 * progress.loaded / progress.total) + "%"),
+                (error) => console.error("Error loading VRM:", error)
+            );
+        };
+
+        window.loadAnimation = (url) => {
+            console.log("Loading Animation: " + url);
+            if (!currentVrm) {
+                console.warn("No VRM loaded to animate");
+                return;
+            }
+
+            // Using GLTFLoader for .glb/.gltf animations (Standard)
+            // Note: Animations must be compatible with the VRM skeleton (Humanoid)
+            const animLoader = new GLTFLoader();
+            animLoader.load(url, (gltf) => {
+                const clip = gltf.animations[0];
+                if (clip) {
+                    // Create Mixer if not exists or reuse?
+                    // Better to create new for new clip on the same root
+                    if (mixer) mixer.stopAllAction();
+                    
+                    mixer = new THREE.AnimationMixer(currentVrm.scene);
+                    const action = mixer.clipAction(clip);
+                    
+                    // Fade in
+                    action.fadeIn(0.5);
+                    action.play();
+                    console.log("Animation playing");
+                } else {
+                    console.error("No animations found in file");
+                }
+            });
+        };
+
+        window.setExpression = (name, value) => {
+            if (currentVrm && currentVrm.expressionManager) {
+                currentVrm.expressionManager.setValue(name, value);
+            }
+        };
+
+        window.setLookAt = (x, y) => {
+            // x, y are -1 to 1 (screen space)
+            if (currentVrm && currentVrm.lookAt) {
+                 currentVrm.lookAt.applier.applyYawPitch(x * 20, y * 20); 
+            }
+        };
+        
+        window.resetCamera = () => {
+            camera.position.set(0.0, 0.8, 3.5);
+            controls.target.set(0.0, 0.8, 0.0);
+            controls.update();
+            console.log("Camera Reset");
+        };
+
+        // --- PROCEDURAL ANIMATION STATE ---
+        let proceduralAnimations = {
+            nod: { active: false, time: 0, duration: 1.0 },
+            shake: { active: false, time: 0, duration: 1.0 },
+            jump: { active: false, time: 0, duration: 0.5 },
+            blink: { nextTime: 0, closing: false, opening: false, value: 0 },
+            breath: { time: 0 }
+        };
+
+
+        window.triggerProcedural = (name) => {
+            if (proceduralAnimations[name]) {
+                proceduralAnimations[name].active = true;
+                proceduralAnimations[name].time = 0;
+                console.log("Triggered procedural: " + name);
+            }
+        };
+
+        // --- ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const deltaTime = clock.getDelta();
+
+            if (currentVrm) {
+                currentVrm.update(deltaTime);
+                
+                // --- IDLE ANIMATIONS (Alive Feel) ---
+                
+                // 1. Blinking
+                const blink = proceduralAnimations.blink;
+                if (!blink.closing && !blink.opening) {
+                    if (clock.elapsedTime > blink.nextTime) {
+                        blink.closing = true;
+                        blink.nextTime = clock.elapsedTime + 2.0 + Math.random() * 3.0; // Next blink in 2-5s
+                    }
+                } else if (blink.closing) {
+                    blink.value += deltaTime * 10.0; // Close speed
+                    if (blink.value >= 1.0) {
+                        blink.value = 1.0;
+                        blink.closing = false;
+                        blink.opening = true;
+                    }
+                } else if (blink.opening) {
+                    blink.value -= deltaTime * 10.0; // Open speed
+                    if (blink.value <= 0.0) {
+                        blink.value = 0.0;
+                        blink.opening = false;
+                    }
+                }
+                if (currentVrm.expressionManager) {
+                    currentVrm.expressionManager.setValue('blink', blink.value);
+                }
+
+                // 2. Breathing & Idle Sway
+                const breath = proceduralAnimations.breath;
+                breath.time += deltaTime;
+                const breathValue = Math.sin(breath.time * 2.0) * 0.03; // Slow sine wave
+                const swayValue = Math.sin(breath.time * 1.5) * 0.02; // Slower sway
+                
+                const spine = currentVrm.humanoid.getNormalizedBoneNode('spine');
+                const chest = currentVrm.humanoid.getNormalizedBoneNode('upperChest') || currentVrm.humanoid.getNormalizedBoneNode('chest');
+                if (spine) spine.rotation.x = breathValue * 0.5;
+                if (chest) chest.rotation.x = breathValue;
+
+                // Arm Sway (Enforce Pose + Sway)
+                const leftArm = currentVrm.humanoid.getNormalizedBoneNode('leftUpperArm');
+                const rightArm = currentVrm.humanoid.getNormalizedBoneNode('rightUpperArm');
+                // Base angle 1.3 rads (~75 deg)
+                if (leftArm) leftArm.rotation.z = 1.3 + swayValue; 
+                if (rightArm) rightArm.rotation.z = -1.3 - swayValue;
+
+
+                // --- Procedural Animations (Events) ---
+                // Nod (Yes)
+                if (proceduralAnimations.nod.active) {
+                    const anim = proceduralAnimations.nod;
+                    anim.time += deltaTime;
+                    if (anim.time < anim.duration) {
+                        const progress = anim.time / anim.duration;
+                        const angle = Math.sin(progress * Math.PI * 2) * 0.3; // Up and down
+                        const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+                        if (neck) neck.rotation.x = angle;
+                    } else {
+                        anim.active = false;
+                        const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+                        if (neck) neck.rotation.x = 0;
+                    }
+                }
+
+                // Shake (No)
+                if (proceduralAnimations.shake.active) {
+                    const anim = proceduralAnimations.shake;
+                    anim.time += deltaTime;
+                    if (anim.time < anim.duration) {
+                        const progress = anim.time / anim.duration;
+                        const angle = Math.sin(progress * Math.PI * 4) * 0.3; // Left Right Left Right
+                        const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+                        if (neck) neck.rotation.y = angle;
+                    } else {
+                        anim.active = false;
+                        const neck = currentVrm.humanoid.getNormalizedBoneNode('neck');
+                        if (neck) neck.rotation.y = 0;
+                    }
+                }
+                
+                // Jump (Excitement)
+                if (proceduralAnimations.jump.active) {
+                    const anim = proceduralAnimations.jump;
+                    anim.time += deltaTime;
+                    if (anim.time < anim.duration) {
+                        const progress = anim.time / anim.duration;
+                        const height = Math.sin(progress * Math.PI) * 0.2; // Jump up
+                        const hips = currentVrm.humanoid.getNormalizedBoneNode('hips');
+                        if (hips) hips.position.y = height;
+                    } else {
+                        anim.active = false;
+                        const hips = currentVrm.humanoid.getNormalizedBoneNode('hips');
+                        if (hips) hips.position.y = 0;
+                    }
+                }
+            }
+            
+            if (mixer) {
+                mixer.update(deltaTime);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+        
+        // Handle Resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        
+        console.log("VRM Engine Ready");
+    </script>
+</body>
+</html>

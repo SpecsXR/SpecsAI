@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Live2D Viewer</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: rgba(0, 0, 255, 0.2); } /* Debug: Blue tint */
+        canvas { display: block; } 
+        #loading {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            font-family: monospace;
+            font-size: 14px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            pointer-events: none;
+            max-width: 90%;
+            word-wrap: break-word;
+            display: block; /* Always show for debug */
+        }
+    </style>
+    
+    <!-- Cubism Core -->
+    <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/dylanNew/live2d/webgl/Live2D/lib/live2d.min.js"></script>
+    
+    <!-- PixiJS (v6.x for compatibility with stable pixi-live2d-display) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/6.5.8/browser/pixi.min.js"></script>
+    
+    <!-- Pixi Live2D Display -->
+    <script src="https://cdn.jsdelivr.net/npm/pixi-live2d-display/dist/index.min.js"></script>
+    
+    <!-- QWebChannel -->
+    <script src="https://unpkg.com/qt-web-channel@1.0.0/qwebchannel.js"></script>
+</head>
+<body>
+    <div id="loading">Waiting for Model...</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        // Expose PIXI
+        window.PIXI = PIXI;
+        
+        let app;
+        let currentModel = null;
+        let pyBridge = null;
+
+        // Initialize Pixi App
+        function init() {
+            try {
+                // Try WebGL first, fallback to Canvas if needed (though Live2D usually needs WebGL)
+                app = new PIXI.Application({
+                    view: document.getElementById('canvas'),
+                    autoStart: true,
+                    resizeTo: window,
+                    backgroundAlpha: 0
+                });
+                
+                log("Pixi App Initialized");
+                
+                // Debug: Draw a red box to confirm Pixi is rendering
+                const graphics = new PIXI.Graphics();
+                graphics.beginFill(0xFF0000);
+                graphics.drawRect(50, 50, 100, 100);
+                graphics.endFill();
+                app.stage.addChild(graphics);
+                log("Debug Red Box Added");
+
+            } catch (e) {
+                log("Pixi Init Failed: " + e);
+            }
+            
+            // Setup WebChannel
+            if (typeof QWebChannel !== 'undefined') {
+                new QWebChannel(qt.webChannelTransport, function(channel) {
+                    pyBridge = channel.objects.pyBridge;
+                    log("Bridge Connected");
+                });
+            }
+        }
+
+        function log(msg) {
+            console.log(msg);
+            const el = document.getElementById('loading');
+            el.innerHTML += `<div>${msg}</div>`;
+            if (pyBridge) pyBridge.log(msg);
+        }
+
+        async function loadModel(url) {
+            try {
+                if (!app) {
+                    throw new Error("Pixi App not initialized");
+                }
+                
+                log("Loading model from URL: " + url);
+                
+                if (currentModel) {
+                    app.stage.removeChild(currentModel);
+                    currentModel.destroy();
+                }
+
+                // Show loading text
+                log("Starting Model Load...");
+
+                // Load Live2D Model
+                const model = await PIXI.live2d.Live2DModel.from(url);
+                currentModel = model;
+
+                app.stage.addChild(model);
+                
+                // Fit to window
+                fitModel(model);
+                
+                // Add interaction for dragging (optional, can be handled by Qt)
+                model.interactive = true;
+                model.buttonMode = true;
+                
+                // Handle Motion if available
+                model.on('hit', (hitAreas) => {
+                    if (hitAreas.includes('body')) {
+                        model.motion('TapBody');
+                    }
+                });
+                
+                log("Model loaded successfully");
+                // document.getElementById('loading').style.display = 'none'; // Keep logs visible for debug
+            } catch (e) {
+                log("Error loading model: " + e);
+                console.error(e);
+            }
+        }
+
+        function fitModel(model) {
+            if (!model) return;
+            
+            // Reset scale to 1.0 to get original dimensions for calculation
+            model.scale.set(1.0);
+            
+            log(`Fitting Model. Window: ${window.innerWidth}x${window.innerHeight}, Model: ${model.width}x${model.height}`);
+
+            if (model.width === 0 || model.height === 0) {
+                 log("Cannot fit model with 0 size.");
+                 return;
+            }
+
+            // Scale to fit window
+            const scaleX = window.innerWidth / model.width;
+            const scaleY = window.innerHeight / model.height;
+            // Use 0.85 to fill screen but leave some breathing room
+            let scale = Math.min(scaleX, scaleY) * 0.85; 
+            
+            model.scale.set(scale);
+            
+            // Center horizontally
+            model.x = (window.innerWidth - model.width) / 2;
+            
+            // Align bottom, but ensure it's not off-screen
+            model.y = (window.innerHeight - model.height);
+            
+            // If there is extra vertical space, maybe push it down a bit less (center vertically?)
+            // For "Face to Face", we often want the eyes at eye level (top 1/3).
+            // But Live2D models vary. Aligning bottom is standard for "standing" characters.
+            // Let's stick to bottom align but ensure y >= 0.
+            
+            if (model.y < 0) model.y = 0;
+            
+            log(`Model Placed at: ${model.x}, ${model.y} with Scale: ${scale}`);
+        }
+
+        window.onresize = () => {
+            if (currentModel) {
+                fitModel(currentModel);
+            }
+        };
+
+        function lookAt(x, y) {
+            if (currentModel) {
+                // Optional: Implement explicit lookAt if needed
+            }
+        }
+
+        // Removed duplicate resize listener
+
+        // Mouse tracking
+        window.addEventListener('mousemove', (event) => {
+             if (currentModel) {
+                 // x, y from -1 to 1
+                 const x = (event.clientX / window.innerWidth) * 2 - 1;
+                 const y = (event.clientY / window.innerHeight) * 2 - 1;
+                 currentModel.focus(x, y); 
+             }
+        });
+
+        init();
+        
+        // Expose functions to global scope for Python
+        window.loadModel = loadModel;
+        window.lookAt = lookAt;
+
+    </script>
+</body>
+</html>

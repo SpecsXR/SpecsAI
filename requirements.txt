@@ -1,0 +1,15 @@
+PySide6==6.7.0          # UI + transparent window (Qt6)
+live2d-py               # Live2D rendering
+pyautogui==0.9.54       # Mouse/keyboard control
+pynput==1.7.7           # Input listening
+numpy==1.26.4           # Math + potential image processing
+pillow==10.4.0          # Image handling (for textures if needed)
+pyttsx3                 # Text-to-Speech engine for voice
+requests                # HTTP requests for Ollama API
+edge-tts                # Online high-quality TTS
+pygame                  # Audio playback
+aiohttp                 # Async HTTP for Gemini API
+groq                    # Groq API for fastest inference
+anthropic               # Claude API
+openai                  # OpenAI API
+google-generativeai     # Gemini API

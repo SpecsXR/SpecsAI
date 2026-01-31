@@ -1,0 +1,60 @@
+{
+    "Version": 3,
+    "FileReferences": {
+        "Moc": "shoujo_a.moc3",
+        "Textures": [
+            "shoujo_a.4096/texture_00.png",
+            "shoujo_a.4096/texture_01.png",
+            "shoujo_a.4096/texture_02.png"
+        ],
+        "Physics": "shoujo_a.physics3.json",
+        "DisplayInfo": "shoujo_a.cdi3.json",
+        "Motions": {
+            "Idle": [
+                {
+                    "File": "motions/idle.motion3.json"
+                }
+            ],
+            "TapBody": [
+                {
+                    "File": "motions/tap.motion3.json"
+                }
+            ],
+            "Head": [
+                {
+                    "File": "motions/nod.motion3.json"
+                }
+            ],
+            "Shake": [
+                {
+                    "File": "motions/shake.motion3.json"
+                }
+            ],
+            "Nod": [
+                {
+                    "File": "motions/nod.motion3.json"
+                }
+            ],
+            "Wave": [
+                {
+                    "File": "motions/wave.motion3.json"
+                }
+            ]
+        }
+    },
+    "Groups": [
+        {
+            "Target": "Parameter",
+            "Name": "LipSync",
+            "Ids": []
+        },
+        {
+            "Target": "Parameter",
+            "Name": "EyeBlink",
+            "Ids": [
+                "ParamEyeLOpen",
+                "ParamEyeROpen"
+            ]
+        }
+    ]
+}

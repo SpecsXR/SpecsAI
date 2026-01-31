@@ -1,0 +1,31 @@
+{
+    "ai": {
+        "provider": "auto",
+        "gemini_api_key": "",
+        "gemini_model": "gemini-2.5-flash",
+        "ollama_url": "http://localhost:11434",
+        "ollama_model": "llama3",
+        "openai_api_key": "",
+        "openai_model": "gpt-4o-mini",
+        "groq_api_key": "",
+        "groq_model": "llama-3.3-70b-versatile",
+        "sambanova_api_key": "",
+        "sambanova_model": "Meta-Llama-3.1-70B-Instruct",
+        "huggingface_api_key": "",
+        "huggingface_model": "meta-llama/Meta-Llama-3-8B-Instruct",
+        "claude_api_key": "",
+        "claude_model": "claude-3-5-sonnet-20240620",
+        "mood": "Helpful Assistant",
+        "role": "friendly"
+    },
+    "system": {
+        "always_on_top": true,
+        "transparent_mode": true,
+        "language": "English"
+    },
+    "voice": {
+        "default_voice_id": "real_strict_teacher",
+        "default_voice": "Real: Strict Teacher",
+        "strict_mode": false
+    }
+}
